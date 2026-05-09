@@ -169,9 +169,60 @@ make install           # Install cluster only — Day 2 NOT included
 make day2              # Apply Day 2 config to an existing cluster
 make install-with-day2 # Install cluster AND Day 2 in one shot
 make destroy           # Destroy cluster and all AWS resources (prompts for confirmation)
+make clean             # Remove cluster workspace dir (keeps downloaded binaries)
+make clean-all         # Remove entire .openshift-install workspace including binaries
 make edit-vault        # Edit encrypted vault secrets
 make encrypt-vault     # Encrypt vault.yml
 make decrypt-vault     # Decrypt vault.yml
+```
+
+## Switching AWS Accounts
+
+When moving to a different AWS account, the cluster workspace and generated
+`install-config.yaml` must be reset so the new account's credentials and
+Route53 domain are picked up cleanly.
+
+### 1. Update credentials and cluster config
+
+```bash
+make edit-vault
+```
+
+Update in the vault:
+
+| Variable | What to change |
+|---|---|
+| `vault_aws_access_key_id` | New account's access key |
+| `vault_aws_secret_access_key` | New account's secret key |
+| `vault_pull_secret` | Pull secret (if using a different Red Hat account) |
+| `vault_ssh_public_key` | SSH public key (if different) |
+| `vault_admin_password` | Admin password for the new cluster |
+
+Then edit [`inventory/group_vars/all/main.yml`](inventory/group_vars/all/main.yml):
+
+| Variable | What to change |
+|---|---|
+| `ocp_base_domain` | Route53 public hosted zone in the new account |
+| `ocp_cluster_name` | New unique cluster name |
+| `ocp_aws_region` | Target region in the new account |
+| `ocp_aws_availability_zones` | AZs matching the new region |
+
+### 2. Clean the cluster workspace
+
+```bash
+make clean
+```
+
+This removes the old cluster directory (including the stale `install-config.yaml`)
+but keeps the downloaded `openshift-install` and `oc` binaries so the next install
+is faster. Use `make clean-all` to also re-download the binaries.
+
+### 3. Install as normal
+
+```bash
+make validate
+make install
+make day2
 ```
 
 ## Typical Workflow

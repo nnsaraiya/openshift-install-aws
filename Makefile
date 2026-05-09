@@ -11,7 +11,7 @@ GALAXY_BIN    := $(shell command -v ansible-galaxy  2>/dev/null || echo $(_PY_US
 VAULT_BIN     := $(shell command -v ansible-vault   2>/dev/null || echo $(_PY_USER_BIN)/ansible-vault)
 ANSIBLE       := $(ANSIBLE_BIN) -i inventory/hosts
 
-.PHONY: help setup encrypt-vault decrypt-vault validate install destroy day2
+.PHONY: help setup encrypt-vault decrypt-vault edit-vault validate install install-with-day2 day2 destroy clean clean-all
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -43,3 +43,9 @@ day2: ## Apply Day 2 config to an existing cluster (htpasswd, registry, kubeadmi
 
 destroy: ## DESTROY the cluster and all AWS resources (irreversible!)
 	$(ANSIBLE) playbooks/destroy.yml
+
+clean: ## Remove cluster workspace dir (keeps downloaded binaries). Run before switching AWS accounts.
+	$(ANSIBLE) playbooks/validate.yml --tags clean
+
+clean-all: ## Remove entire .openshift-install workspace including downloaded binaries
+	$(ANSIBLE) playbooks/validate.yml --tags clean,clean-bins

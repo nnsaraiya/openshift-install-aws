@@ -1,4 +1,18 @@
 ---
+# ─── Clean tasks (tagged — only run via 'make clean' / 'make clean-all') ──────
+- name: Remove cluster workspace directory
+  file:
+    path: "{{ ocp_cluster_dir }}"
+    state: absent
+  tags: [clean, never]
+
+- name: Remove downloaded binaries directory
+  file:
+    path: "{{ ocp_bin_dir }}"
+    state: absent
+  tags: [clean-bins, never]
+
+# ─── Normal prereq tasks ───────────────────────────────────────────────────────
 - name: Detect OS and local machine architecture
   set_fact:
     # _local_arch: architecture of this machine (drives oc/kubectl download)
