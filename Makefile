@@ -1,11 +1,14 @@
 .DEFAULT_GOAL := help
-# Resolve ansible binaries — handles both system PATH and pip --user installs
-ANSIBLE_BIN   := $(shell command -v ansible-playbook 2>/dev/null \
-                   || echo $(HOME)/Library/Python/3.10/bin/ansible-playbook)
-GALAXY_BIN    := $(shell command -v ansible-galaxy 2>/dev/null \
-                   || echo $(HOME)/Library/Python/3.10/bin/ansible-galaxy)
-VAULT_BIN     := $(shell command -v ansible-vault 2>/dev/null \
-                   || echo $(HOME)/Library/Python/3.10/bin/ansible-vault)
+# Resolve ansible binaries — handles system PATH and pip --user installs on macOS and Linux
+_OS := $(shell uname -s)
+ifeq ($(_OS),Darwin)
+  _PY_USER_BIN := $(HOME)/Library/Python/$(shell python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo 3.10)/bin
+else
+  _PY_USER_BIN := $(HOME)/.local/bin
+endif
+ANSIBLE_BIN   := $(shell command -v ansible-playbook 2>/dev/null || echo $(_PY_USER_BIN)/ansible-playbook)
+GALAXY_BIN    := $(shell command -v ansible-galaxy  2>/dev/null || echo $(_PY_USER_BIN)/ansible-galaxy)
+VAULT_BIN     := $(shell command -v ansible-vault   2>/dev/null || echo $(_PY_USER_BIN)/ansible-vault)
 ANSIBLE       := $(ANSIBLE_BIN) -i inventory/hosts
 
 .PHONY: help setup encrypt-vault decrypt-vault validate install destroy day2

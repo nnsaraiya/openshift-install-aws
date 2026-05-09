@@ -8,8 +8,8 @@ Installer-Provisioned Infrastructure (IPI) method, managed via Ansible.
 | Requirement | Notes |
 |---|---|
 | Ansible ≥ 2.15 | `pip install --user ansible` |
-| AWS CLI v2 | `brew install awscli` |
-| `htpasswd` utility | `brew install httpd` (macOS) |
+| AWS CLI v2 | macOS: `brew install awscli` · Linux: see [AWS docs](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) |
+| `htpasswd` utility | macOS: `brew install httpd` · Debian/Ubuntu: `apt install apache2-utils` · RHEL/Fedora: `dnf install httpd-tools` |
 | AWS account with [required IAM permissions](https://docs.openshift.com/container-platform/latest/installing/installing_aws/installing-aws-account.html) | |
 | Route53 **public** hosted zone for your base domain | Must exist before install |
 | Red Hat pull secret | Download from https://console.redhat.com/openshift/install/pull-secret |
@@ -18,6 +18,11 @@ Installer-Provisioned Infrastructure (IPI) method, managed via Ansible.
 > x86_64 and runs via Rosetta 2. This is required to deploy amd64 clusters, which
 > is the default (`ocp_cluster_arch: amd64`). The `oc`/`kubectl` clients download
 > as native arm64 for performance.
+
+> **Linux:** Ansible is typically installed via `pip install --user ansible`; ensure
+> `~/.local/bin` is on your `PATH`. The playbooks automatically download the correct
+> Linux binaries (`openshift-install-linux.tar.gz`, `openshift-client-linux.tar.gz`)
+> based on `ansible_system`.
 
 ## Quick Start
 
