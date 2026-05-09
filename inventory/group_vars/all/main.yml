@@ -1,0 +1,66 @@
+---
+# ─── OpenShift Release ────────────────────────────────────────────────────────
+# "latest" pulls the current stable release from the Red Hat mirror.
+# Pin to an exact version (e.g. "4.17.3") for reproducible deployments.
+ocp_version: "latest"
+ocp_client_base_url: "https://mirror.openshift.com/pub/openshift-v4"
+# Architecture of cluster NODES — independent of the machine running Ansible.
+# amd64 → m6i/m5/c6i/etc.  arm64 → m6g/m7g/c6g/etc. (Graviton)
+ocp_cluster_arch: "amd64"
+
+# ─── Cluster Identity ─────────────────────────────────────────────────────────
+ocp_cluster_name: "ocp-aws-ansible"
+ocp_base_domain: "sandbox1208.opentlc.com"          # Route53 public hosted zone must exist
+
+# ─── AWS Region & AZs ─────────────────────────────────────────────────────────
+ocp_aws_region: "ap-southeast-2"
+ocp_aws_availability_zones:
+  - "ap-southeast-2a"
+  - "ap-southeast-2b"
+  - "ap-southeast-2c"
+
+# ─── Control Plane ────────────────────────────────────────────────────────────
+ocp_master_instance_type: "m6i.xlarge"
+ocp_master_replicas: 3
+
+# ─── Compute ──────────────────────────────────────────────────────────────────
+ocp_worker_instance_type: "m6i.2xlarge"
+ocp_worker_replicas: 3
+
+# ─── Networking ───────────────────────────────────────────────────────────────
+ocp_cluster_network_cidr: "10.128.0.0/14"
+ocp_cluster_network_host_prefix: 23
+ocp_machine_network_cidr: "10.0.0.0/16"
+ocp_service_network_cidr: "172.30.0.0/16"
+ocp_network_type: "OVNKubernetes"
+
+# ─── AWS Tags (applied to all provisioned resources) ──────────────────────────
+ocp_aws_tags:
+  Environment: "production"
+  ManagedBy: "ansible"
+  Cluster: "{{ ocp_cluster_name }}"
+
+# ─── Local Paths ──────────────────────────────────────────────────────────────
+# Root for downloaded binaries and cluster working directories.
+ocp_workspace: "{{ inventory_dir }}/../.openshift-install"
+ocp_bin_dir: "{{ ocp_workspace }}/bin"
+ocp_cluster_dir: "{{ ocp_workspace }}/clusters/{{ ocp_cluster_name }}"
+
+# ─── Day 2 — Authentication ───────────────────────────────────────────────────
+ocp_remove_kubeadmin: true
+ocp_htpasswd_secret_name: "htpasswd-secret"
+ocp_htpasswd_users:
+  - username: "cluster-admin"
+    password: "{{ vault_admin_password }}"
+
+# ─── Day 2 — Image Registry Storage ──────────────────────────────────────────
+# Managed S3 bucket is created automatically by the IPI installer.
+# Set to true to configure the registry to use the in-cluster PVC instead.
+ocp_registry_use_pvc: false
+ocp_registry_pvc_size: "100Gi"
+
+# ─── Secrets (sourced from vault) ─────────────────────────────────────────────
+aws_access_key_id: "{{ vault_aws_access_key_id }}"
+aws_secret_access_key: "{{ vault_aws_secret_access_key }}"
+ocp_pull_secret: "{{ vault_pull_secret }}"
+ocp_ssh_public_key: "{{ vault_ssh_public_key }}"

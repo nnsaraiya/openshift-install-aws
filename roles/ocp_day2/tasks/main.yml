@@ -1,0 +1,133 @@
+---
+# ─── HTPasswd Identity Provider ───────────────────────────────────────────────
+- name: Generate htpasswd entries
+  command: htpasswd -nbB {{ item.username }} {{ item.password }}
+  loop: "{{ ocp_htpasswd_users }}"
+  register: _htpasswd_lines
+  changed_when: false
+  no_log: true
+
+# Write to a temp file — avoids shlex/shell mangling of $ in bcrypt hashes
+- name: Write htpasswd to temp file
+  copy:
+    content: "{{ (_htpasswd_lines.results | map(attribute='stdout') | list | join('\n')) + '\n' }}"
+    dest: "/tmp/ocp-htpasswd"
+    mode: "0600"
+  no_log: true
+
+- name: Apply htpasswd secret from file
+  command: >
+    {{ ocp_bin_dir }}/oc create secret generic {{ ocp_htpasswd_secret_name }}
+    --from-file=htpasswd=/tmp/ocp-htpasswd
+    -n openshift-config
+    --dry-run=client -o yaml
+  register: _htpasswd_secret_yaml
+  changed_when: false
+  no_log: true
+
+- name: Apply htpasswd secret
+  command: "{{ ocp_bin_dir }}/oc apply -f -"
+  args:
+    stdin: "{{ _htpasswd_secret_yaml.stdout }}"
+  environment:
+    KUBECONFIG: "{{ ocp_cluster_dir }}/auth/kubeconfig"
+
+- name: Remove temp htpasswd file
+  file:
+    path: /tmp/ocp-htpasswd
+    state: absent
+
+- name: Apply htpasswd OAuth CR
+  command: "{{ ocp_bin_dir }}/oc apply -f -"
+  args:
+    stdin: "{{ lookup('template', 'htpasswd-cr.yaml.j2') }}"
+  environment:
+    KUBECONFIG: "{{ ocp_cluster_dir }}/auth/kubeconfig"
+
+- name: Grant cluster-admin to each htpasswd user
+  command: >
+    {{ ocp_bin_dir }}/oc adm policy add-cluster-role-to-user
+    cluster-admin {{ item.username }}
+  loop: "{{ ocp_htpasswd_users }}"
+  environment:
+    KUBECONFIG: "{{ ocp_cluster_dir }}/auth/kubeconfig"
+
+# ─── Wait for OAuth rollout ───────────────────────────────────────────────────
+- name: Wait for OAuth operator to pick up new htpasswd config
+  command: >
+    {{ ocp_bin_dir }}/oc rollout status deployment/oauth-openshift
+    -n openshift-authentication --timeout=300s
+  environment:
+    KUBECONFIG: "{{ ocp_cluster_dir }}/auth/kubeconfig"
+  changed_when: false
+
+# Verify login using oc get identity — avoids needing to know the API URL in scope
+# and is more reliable than oc login (which needs a fresh kubeconfig path)
+- name: Wait for htpasswd identity provider to accept credentials
+  shell: >
+    {{ ocp_bin_dir }}/oc login
+    --server={{ _api_url.stdout | default(lookup('pipe', ocp_bin_dir + '/oc whoami --show-server --kubeconfig=' + ocp_cluster_dir + '/auth/kubeconfig')) }}
+    --username={{ ocp_htpasswd_users[0].username }}
+    --password={{ ocp_htpasswd_users[0].password | quote }}
+    --kubeconfig=/tmp/ocp-htpasswd-test-kubeconfig
+    --insecure-skip-tls-verify=true
+  register: _login_test
+  retries: 20
+  delay: 30
+  until: _login_test.rc == 0
+  no_log: true
+  when: ocp_remove_kubeadmin | bool
+
+- name: Clean up test kubeconfig
+  file:
+    path: /tmp/ocp-htpasswd-test-kubeconfig
+    state: absent
+  when: ocp_remove_kubeadmin | bool
+
+# ─── Remove kubeadmin ─────────────────────────────────────────────────────────
+- name: Remove kubeadmin secret
+  command: >
+    {{ ocp_bin_dir }}/oc delete secret kubeadmin
+    -n kube-system --ignore-not-found
+  environment:
+    KUBECONFIG: "{{ ocp_cluster_dir }}/auth/kubeconfig"
+  when: ocp_remove_kubeadmin | bool
+
+# ─── Image Registry ───────────────────────────────────────────────────────────
+- name: Ensure image registry managementState is Managed
+  command: >
+    {{ ocp_bin_dir }}/oc patch configs.imageregistry.operator.openshift.io/cluster
+    --type=merge
+    --patch='{"spec":{"managementState":"Managed"}}'
+  environment:
+    KUBECONFIG: "{{ ocp_cluster_dir }}/auth/kubeconfig"
+
+- name: Configure image registry storage (emptyDir for non-prod)
+  command: >
+    {{ ocp_bin_dir }}/oc patch configs.imageregistry.operator.openshift.io/cluster
+    --type=merge
+    --patch='{"spec":{"storage":{"emptyDir":{}}}}'
+  environment:
+    KUBECONFIG: "{{ ocp_cluster_dir }}/auth/kubeconfig"
+  when: not ocp_registry_use_pvc | bool
+
+# ─── Cluster Version & Health Summary ─────────────────────────────────────────
+- name: Show cluster version
+  command: "{{ ocp_bin_dir }}/oc get clusterversion"
+  environment:
+    KUBECONFIG: "{{ ocp_cluster_dir }}/auth/kubeconfig"
+  register: _cv
+  changed_when: false
+
+- name: Show node status
+  command: "{{ ocp_bin_dir }}/oc get nodes -o wide"
+  environment:
+    KUBECONFIG: "{{ ocp_cluster_dir }}/auth/kubeconfig"
+  register: _nodes
+  changed_when: false
+
+- name: Day 2 complete — cluster summary
+  debug:
+    msg:
+      - "{{ _cv.stdout_lines }}"
+      - "{{ _nodes.stdout_lines }}"

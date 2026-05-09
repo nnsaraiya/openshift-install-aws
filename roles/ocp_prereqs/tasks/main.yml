@@ -1,0 +1,156 @@
+---
+- name: Detect OS and local machine architecture
+  set_fact:
+    # _local_arch: architecture of this machine (drives oc/kubectl download)
+    _local_arch: >-
+      {{ 'arm64' if ansible_architecture in ['arm64', 'aarch64'] else 'amd64' }}
+    # _installer_arch: architecture of the cluster nodes (drives openshift-install download)
+    _installer_arch: "{{ ocp_cluster_arch }}"
+
+- name: Resolve download filenames
+  set_fact:
+    # openshift-install must match the cluster architecture, not the local machine arch.
+    # On Apple Silicon + amd64 clusters the x86_64 binary runs via Rosetta 2.
+    _installer_filename: >-
+      {%- if ansible_system == 'Darwin' -%}
+        {%- if _installer_arch == 'arm64' -%}openshift-install-mac-arm64.tar.gz
+        {%- else -%}openshift-install-mac.tar.gz{%- endif -%}
+      {%- else -%}
+        {%- if _installer_arch == 'arm64' -%}openshift-install-linux-arm64.tar.gz
+        {%- else -%}openshift-install-linux.tar.gz{%- endif -%}
+      {%- endif -%}
+    # oc/kubectl use the local machine arch for native performance
+    _client_filename: >-
+      {%- if ansible_system == 'Darwin' -%}
+        {%- if _local_arch == 'arm64' -%}openshift-client-mac-arm64.tar.gz
+        {%- else -%}openshift-client-mac.tar.gz{%- endif -%}
+      {%- else -%}
+        {%- if _local_arch == 'arm64' -%}openshift-client-linux-arm64.tar.gz
+        {%- else -%}openshift-client-linux.tar.gz{%- endif -%}
+      {%- endif -%}
+    _installer_download_arch: >-
+      {{ 'aarch64' if _installer_arch == 'arm64' else 'x86_64' }}
+    _client_download_arch: >-
+      {{ 'aarch64' if _local_arch == 'arm64' else 'x86_64' }}
+
+- name: Ensure workspace and bin directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+  loop:
+    - "{{ ocp_workspace }}"
+    - "{{ ocp_bin_dir }}"
+    - "{{ ocp_cluster_dir }}"
+
+- name: Check if openshift-install already downloaded
+  stat:
+    path: "{{ ocp_bin_dir }}/openshift-install"
+  register: _installer_stat
+
+- name: Download openshift-install binary
+  when: not _installer_stat.stat.exists
+  block:
+    - name: Fetch openshift-install tarball
+      get_url:
+        url: "{{ ocp_client_base_url }}/{{ _installer_download_arch }}/clients/ocp/{{ ocp_version }}/{{ _installer_filename }}"
+        dest: "/tmp/{{ _installer_filename }}"
+        timeout: 120
+        mode: "0644"
+
+    - name: Extract openshift-install
+      command: >
+        tar xzf /tmp/{{ _installer_filename }}
+        --include='openshift-install'
+        -C {{ ocp_bin_dir }}
+      args:
+        creates: "{{ ocp_bin_dir }}/openshift-install"
+
+    - name: Remove installer tarball
+      file:
+        path: "/tmp/{{ _installer_filename }}"
+        state: absent
+
+- name: Check if oc client already downloaded
+  stat:
+    path: "{{ ocp_bin_dir }}/oc"
+  register: _oc_stat
+
+- name: Download oc client binary
+  when: not _oc_stat.stat.exists
+  block:
+    - name: Fetch oc client tarball
+      get_url:
+        url: "{{ ocp_client_base_url }}/{{ _client_download_arch }}/clients/ocp/{{ ocp_version }}/{{ _client_filename }}"
+        dest: "/tmp/{{ _client_filename }}"
+        timeout: 120
+        mode: "0644"
+
+    - name: Extract oc and kubectl
+      command: >
+        tar xzf /tmp/{{ _client_filename }}
+        --include='oc' --include='kubectl'
+        -C {{ ocp_bin_dir }}
+      args:
+        creates: "{{ ocp_bin_dir }}/oc"
+
+    - name: Remove client tarball
+      file:
+        path: "/tmp/{{ _client_filename }}"
+        state: absent
+
+- name: Log openshift-install version
+  command: "{{ ocp_bin_dir }}/openshift-install version"
+  register: _installer_version
+  changed_when: false
+
+- name: Show installer version
+  debug:
+    msg: "{{ _installer_version.stdout_lines }}"
+
+- name: Validate AWS credentials
+  command: aws sts get-caller-identity
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+    AWS_DEFAULT_REGION: "{{ ocp_aws_region }}"
+  register: _aws_identity
+  changed_when: false
+
+- name: Show AWS caller identity
+  debug:
+    msg: "{{ _aws_identity.stdout | from_json }}"
+
+- name: Verify Route53 hosted zone for base domain exists
+  command: >
+    aws route53 list-hosted-zones-by-name
+    --dns-name "{{ ocp_base_domain }}."
+    --query "HostedZones[?Name=='{{ ocp_base_domain }}.'].Id"
+    --output text
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+    AWS_DEFAULT_REGION: "{{ ocp_aws_region }}"
+  register: _hosted_zone
+  changed_when: false
+  failed_when: _hosted_zone.stdout | trim == ""
+
+- name: Check if install-config already exists (idempotency guard)
+  stat:
+    path: "{{ ocp_cluster_dir }}/install-config.yaml"
+  register: _install_config_stat
+
+- name: Generate install-config.yaml
+  when: not _install_config_stat.stat.exists
+  template:
+    src: install-config.yaml.j2
+    dest: "{{ ocp_cluster_dir }}/install-config.yaml"
+    mode: "0600"
+
+- name: Back up install-config.yaml (installer consumes and removes it)
+  copy:
+    src: "{{ ocp_cluster_dir }}/install-config.yaml"
+    dest: "{{ ocp_cluster_dir }}/install-config.yaml.bak"
+    remote_src: true
+    mode: "0600"
+  when: not _install_config_stat.stat.exists

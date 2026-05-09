@@ -1,0 +1,21 @@
+---
+# Full IPI cluster installation + Day 2 configuration.
+# Run: ansible-playbook playbooks/install.yml
+#
+# To skip Day 2:
+#   ansible-playbook playbooks/install.yml --skip-tags day2
+#
+# To only run Day 2 on an existing cluster:
+#   ansible-playbook playbooks/install.yml --tags day2
+- name: Install OpenShift on AWS (IPI)
+  hosts: localhost
+  gather_facts: true
+  roles:
+    - role: ocp_prereqs
+      tags: [prereqs]
+
+    - role: ocp_install
+      tags: [install]
+
+    - role: ocp_day2
+      tags: [day2]

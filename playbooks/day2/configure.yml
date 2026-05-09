@@ -1,0 +1,29 @@
+---
+# Runs only the Day 2 configuration role against an existing cluster.
+# Useful for re-applying Day 2 config after cluster re-use or config drift.
+# Run: ansible-playbook playbooks/day2/configure.yml
+- name: Day 2 configuration for existing OpenShift cluster
+  hosts: localhost
+  gather_facts: true
+
+  pre_tasks:
+    - name: Resolve installer bin path (prereqs role not included here)
+      set_fact:
+        ocp_bin_dir: "{{ ocp_workspace }}/bin"
+
+    - name: Verify kubeconfig exists
+      stat:
+        path: "{{ ocp_cluster_dir }}/auth/kubeconfig"
+      register: _kubeconfig
+      failed_when: not _kubeconfig.stat.exists
+
+    - name: Get API server URL
+      command: >
+        {{ ocp_bin_dir }}/oc whoami --show-server
+      environment:
+        KUBECONFIG: "{{ ocp_cluster_dir }}/auth/kubeconfig"
+      register: _api_url
+      changed_when: false
+
+  roles:
+    - role: ocp_day2

@@ -1,0 +1,46 @@
+apiVersion: v1
+baseDomain: {{ ocp_base_domain }}
+metadata:
+  name: {{ ocp_cluster_name }}
+compute:
+  - architecture: {{ ocp_cluster_arch }}
+    hyperthreading: Enabled
+    name: worker
+    platform:
+      aws:
+        type: {{ ocp_worker_instance_type }}
+        zones:
+{% for zone in ocp_aws_availability_zones %}
+          - {{ zone }}
+{% endfor %}
+    replicas: {{ ocp_worker_replicas }}
+controlPlane:
+  architecture: {{ ocp_cluster_arch }}
+  hyperthreading: Enabled
+  name: master
+  platform:
+    aws:
+      type: {{ ocp_master_instance_type }}
+      zones:
+{% for zone in ocp_aws_availability_zones %}
+        - {{ zone }}
+{% endfor %}
+  replicas: {{ ocp_master_replicas }}
+networking:
+  clusterNetwork:
+    - cidr: {{ ocp_cluster_network_cidr }}
+      hostPrefix: {{ ocp_cluster_network_host_prefix }}
+  machineNetwork:
+    - cidr: {{ ocp_machine_network_cidr }}
+  networkType: {{ ocp_network_type }}
+  serviceNetwork:
+    - {{ ocp_service_network_cidr }}
+platform:
+  aws:
+    region: {{ ocp_aws_region }}
+    userTags:
+{% for key, value in ocp_aws_tags.items() %}
+      {{ key }}: "{{ value }}"
+{% endfor %}
+pullSecret: {{ (ocp_pull_secret if ocp_pull_secret is string else ocp_pull_secret | to_json) | to_json }}
+sshKey: {{ ocp_ssh_public_key.split()[0] }} {{ ocp_ssh_public_key.split() | reject('equalto', ocp_ssh_public_key.split()[0]) | join(' ') }}

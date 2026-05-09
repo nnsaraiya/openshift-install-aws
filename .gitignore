@@ -1,0 +1,42 @@
+# OpenShift install artifacts (contain secrets & TF state — never commit)
+.openshift-install/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+auth/
+metadata.json
+
+# Ansible vault password file
+.vault_pass
+*.vault_pass
+
+# Binaries
+bin/
+openshift-install
+oc
+kubectl
+
+# SSH keys
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Python virtualenv
+.venv/
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Ansible retry files
+*.retry
+
+# Fact cache
+.ansible_facts_cache/

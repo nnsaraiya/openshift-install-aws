@@ -1,0 +1,15 @@
+---
+# Validates prerequisites without creating any cluster resources.
+# Run: ansible-playbook playbooks/validate.yml
+- name: Validate prerequisites for OpenShift IPI on AWS
+  hosts: localhost
+  gather_facts: true
+  vars:
+    ocp_validate_only: true
+  roles:
+    - role: ocp_prereqs
+
+  post_tasks:
+    - name: Validation complete — no cluster resources were created
+      debug:
+        msg: "All prerequisites met. Run playbooks/install.yml to create the cluster."

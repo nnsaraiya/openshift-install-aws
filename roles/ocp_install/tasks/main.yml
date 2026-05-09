@@ -1,0 +1,64 @@
+---
+- name: Check if cluster already exists (metadata.json present)
+  stat:
+    path: "{{ ocp_cluster_dir }}/metadata.json"
+  register: _metadata_stat
+
+- name: Run openshift-install create cluster
+  when: not _metadata_stat.stat.exists
+  command: >
+    {{ ocp_bin_dir }}/openshift-install create cluster
+    --dir={{ ocp_cluster_dir }}
+    --log-level=info
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+    AWS_DEFAULT_REGION: "{{ ocp_aws_region }}"
+  async: 7200    # 2-hour ceiling; typical IPI install takes ~40-45 min
+  poll: 30
+  register: _install_result
+
+- name: Verify kubeconfig was written
+  stat:
+    path: "{{ ocp_cluster_dir }}/auth/kubeconfig"
+  register: _kubeconfig_stat
+  failed_when: not _kubeconfig_stat.stat.exists
+
+- name: Read kubeadmin password
+  slurp:
+    src: "{{ ocp_cluster_dir }}/auth/kubeadmin-password"
+  register: _kubeadmin_password
+
+- name: Read API server URL from install output
+  command: >
+    {{ ocp_bin_dir }}/oc whoami --show-server
+  environment:
+    KUBECONFIG: "{{ ocp_cluster_dir }}/auth/kubeconfig"
+  register: _api_url
+  changed_when: false
+
+- name: Cluster access summary
+  debug:
+    msg:
+      - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      - "  Cluster : {{ ocp_cluster_name }}.{{ ocp_base_domain }}"
+      - "  API     : {{ _api_url.stdout }}"
+      - "  Console : https://console-openshift-console.apps.{{ ocp_cluster_name }}.{{ ocp_base_domain }}"
+      - "  User    : kubeadmin"
+      - "  Password: {{ _kubeadmin_password.content | b64decode | trim }}"
+      - "  Kubeconfig: {{ ocp_cluster_dir }}/auth/kubeconfig"
+      - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+- name: Verify all cluster operators are available
+  command: >
+    {{ ocp_bin_dir }}/oc get clusteroperators
+    --no-headers
+    -o custom-columns='NAME:.metadata.name,AVAILABLE:.status.conditions[?(@.type=="Available")].status'
+  environment:
+    KUBECONFIG: "{{ ocp_cluster_dir }}/auth/kubeconfig"
+  register: _co_status
+  changed_when: false
+
+- name: Show cluster operators
+  debug:
+    msg: "{{ _co_status.stdout_lines }}"

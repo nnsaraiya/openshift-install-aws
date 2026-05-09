@@ -1,0 +1,57 @@
+---
+# Destroys all AWS resources provisioned by the IPI installer.
+# Run: ansible-playbook playbooks/destroy.yml
+#
+# CAUTION: This is irreversible. The cluster and ALL its AWS resources
+#          (VPCs, instances, load balancers, Route53 records, S3 buckets)
+#          will be permanently deleted.
+- name: Destroy OpenShift cluster on AWS
+  hosts: localhost
+  gather_facts: true
+
+  pre_tasks:
+    - name: Confirm cluster directory exists before attempting destroy
+      stat:
+        path: "{{ ocp_cluster_dir }}/metadata.json"
+      register: _metadata
+
+    - name: Abort if no cluster metadata found
+      fail:
+        msg: >
+          No metadata.json found at {{ ocp_cluster_dir }}.
+          Either the cluster was never created or the workspace was already cleaned up.
+      when: not _metadata.stat.exists
+
+    - name: Safety prompt — confirm destruction
+      pause:
+        prompt: |
+          ⚠️  You are about to DESTROY cluster '{{ ocp_cluster_name }}.{{ ocp_base_domain }}'.
+          All AWS resources will be permanently deleted.
+          Type the cluster name to confirm: {{ ocp_cluster_name }}
+      register: _confirm
+      when: not (skip_confirm | default(false) | bool)
+
+    - name: Abort if cluster name confirmation did not match
+      fail:
+        msg: "Confirmation text did not match cluster name. Aborting."
+      when:
+        - not (skip_confirm | default(false) | bool)
+        - _confirm.user_input | trim != ocp_cluster_name
+
+  tasks:
+    - name: Run openshift-install destroy cluster
+      command: >
+        {{ ocp_bin_dir }}/openshift-install destroy cluster
+        --dir={{ ocp_cluster_dir }}
+        --log-level=info
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+        AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+        AWS_DEFAULT_REGION: "{{ ocp_aws_region }}"
+      async: 3600
+      poll: 30
+      register: _destroy_result
+
+    - name: Destroy complete
+      debug:
+        msg: "Cluster {{ ocp_cluster_name }} has been destroyed. Workspace retained at {{ ocp_cluster_dir }}"
