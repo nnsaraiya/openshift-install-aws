@@ -9,8 +9,8 @@ ocp_client_base_url: "https://mirror.openshift.com/pub/openshift-v4"
 ocp_cluster_arch: "amd64"
 
 # ─── Cluster Identity ─────────────────────────────────────────────────────────
-ocp_cluster_name: "ocp-aws-ansible"
-ocp_base_domain: "sandbox1208.opentlc.com"          # Route53 public hosted zone must exist
+ocp_cluster_name: "openshift-install-aws"
+ocp_base_domain: "sandbox967.opentlc.com"          # Route53 public hosted zone must exist
 
 # ─── AWS Region & AZs ─────────────────────────────────────────────────────────
 ocp_aws_region: "ap-southeast-2"
