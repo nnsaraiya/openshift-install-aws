@@ -49,6 +49,7 @@
       - "  Kubeconfig: {{ ocp_cluster_dir }}/auth/kubeconfig"
       - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+# DNS for the API endpoint can take a few minutes to propagate after install.
 - name: Verify all cluster operators are available
   command: >
     {{ ocp_bin_dir }}/oc get clusteroperators
@@ -58,6 +59,9 @@
     KUBECONFIG: "{{ ocp_cluster_dir }}/auth/kubeconfig"
   register: _co_status
   changed_when: false
+  retries: 10
+  delay: 30
+  until: _co_status.rc == 0
 
 - name: Show cluster operators
   debug:
