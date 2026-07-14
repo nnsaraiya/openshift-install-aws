@@ -35,6 +35,9 @@ __pycache__/
 .vscode/
 *.swp
 
+# Claude Code local state (worktrees, session settings)
+.claude/
+
 # Ansible retry files
 *.retry
 
